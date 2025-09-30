@@ -8,10 +8,10 @@ git commit -sm "Prepare" || true
 # cleanup (kecuali .git, kernel, LICENSE, .gitignore)
 shopt -s dotglob
 for f in *; do
-    case "$f" in
-        .git|kernel|LICENSE|.gitignore) ;;
-        *) rm -rf "$f" ;;
-    esac
+  case "$f" in
+    .git | kernel | LICENSE | .gitignore) ;;
+    *) rm -rf "$f" ;;
+  esac
 done
 shopt -u dotglob
 git add -A
@@ -25,30 +25,30 @@ git commit -sm "setup.sh: switch to our fork"
 
 # functions
 check() {
-    local dir="$1"
-    local repo="$2"
-    local branch="$3"
+  local dir="$1"
+  local repo="$2"
+  local branch="$3"
 
-    if [ -d "$dir/.git" ]; then
-        echo "📥 Updating $dir..."
-        git -C "$dir" pull --ff-only || true
-    else
-        echo "📥 Cloning $repo ($branch) into $dir..."
-        git clone --depth=1 -b "$branch" "$repo" "$dir"
-    fi
+  if [ -d "$dir/.git" ]; then
+    echo "📥 Updating $dir..."
+    git -C "$dir" pull --ff-only || true
+  else
+    echo "📥 Cloning $repo ($branch) into $dir..."
+    git clone --depth=1 -b "$branch" "$repo" "$dir"
+  fi
 }
 
 abort() {
-    echo "❌ error: $*" >&2
-    exit 1
+  echo "❌ error: $*" >&2
+  exit 1
 }
 
 _patch() {
-    local patch_file="$1"
-    patch -p1 --no-backup-if-mismatch <"$patch_file"
+  local patch_file="$1"
+  patch -p1 --no-backup-if-mismatch < "$patch_file"
 
-    # cleanup .orig / .rej
-    find . -type f \( -name '*.orig' -o -name '*.rej' \) -delete
+  # cleanup .orig / .rej
+  find . -type f \( -name '*.orig' -o -name '*.rej' \) -delete
 }
 
 # clone repos
@@ -57,8 +57,8 @@ check ".kp" "https://github.com/WildKernels/kernel_patches" "main"
 
 sus_dir="$PWD/.susfs"
 sus_ver=$(grep -E '^#define SUSFS_VERSION' \
-    "$sus_dir/kernel_patches/include/linux/susfs.h" | \
-    cut -d' ' -f3 | tr -d '"')
+  "$sus_dir/kernel_patches/include/linux/susfs.h" \
+  | cut -d' ' -f3 | tr -d '"')
 
 kp="$PWD/.kp/next/susfs_fix_patches/$sus_ver"
 sus_patch="${sus_dir}/kernel_patches/KernelSU/10_enable_susfs_for_ksu.patch"
@@ -70,11 +70,10 @@ sus_patch="${sus_dir}/kernel_patches/KernelSU/10_enable_susfs_for_ksu.patch"
 _patch "$sus_patch"
 
 for p in "$kp"/*.patch; do
-    _patch "$p"
+  _patch "$p"
 done
 
 git add -A
 git commit -sm "Add SUSFS $sus_ver" || true
 
 echo "🎉 Done! SUSFS $sus_ver applied successfully."
-

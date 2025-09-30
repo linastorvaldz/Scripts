@@ -35,8 +35,8 @@ extract_partition_from_super() {
   $bin/simg2img super.img super.img.raw
 
   for p in $@; do
-    $bin/lpunpack --partition="${p}_a" super.img.raw ||
-      $bin/lpunpack --partition="$p" super.img.raw
+    $bin/lpunpack --partition="${p}_a" super.img.raw \
+      || $bin/lpunpack --partition="$p" super.img.raw
     if [ -f "${p}_a.img" ]; then
       mv -f "${p}_a.img" "$p.img"
     fi
