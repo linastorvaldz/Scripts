@@ -37,14 +37,11 @@ install_magiskboot() {
   [[ -z "$arch" ]] && die "Architecture must be specified!"
   local magiskboot_f="$TMPDIR/native/out/$arch/magiskboot"
   [[ -f "$magiskboot_f" ]] || die "magiskboot binary for '$arch' not found in extracted archive!"
-  
+
   info "Installing magiskboot to $INSTALL_DIR"
   sudo install -m 755 "$magiskboot_f" "$INSTALL_DIR/magiskboot" || die "Failed to install magiskboot!"
-  
-  if ! "$INSTALL_DIR/magiskboot" --help >/dev/null 2>&1; then
-    die "Installed magiskboot failed to execute properly!"
-  fi
-  info "magiskboot successfully installed and verified."
+
+  info "magiskboot successfully installed"
 }
 
 cleanup() {
