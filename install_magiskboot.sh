@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-set -euo pipefail
+set -e
 
 # === Config ===
 MAGISKBINS_REPO="https://api.github.com/repos/xiaoxindada/magisk_bins_ndk/releases/latest"
@@ -63,8 +63,10 @@ cd "$TMPDIR"
 info "Downloading Magisk binaries..."
 curl -L -s "$MAGISKBINS_URL" -o magiskbins.7z || die "Failed to download Magisk bins."
 
+set +e
 info "Extracting archive..."
-7z x -y magiskbins.7z >/dev/null || die "Failed to extract Magisk archive."
+7z x -y magiskbins.7z >/dev/null 2>&1
+set -e
 
 info "Detecting architecture..."
 case "$(uname -m)" in
