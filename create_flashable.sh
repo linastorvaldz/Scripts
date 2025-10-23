@@ -12,7 +12,7 @@ while [[ $# -gt 0 ]]; do
       INCLUDE_PRELOADER=false
       shift
       ;;
-    --url|-u)
+    --url | -u)
       if [[ -n "${2:-}" ]]; then
         URL="$2"
         shift 2
@@ -36,17 +36,15 @@ fi
 # --- Download firmware ---
 aria2c -s16 -x16 -o archive "$URL"
 
-if ! file archive | grep -qi 'zip'; then
-  echo "Not a zip file, abort"
-  exit 1
-fi
-
 # --- Prepare workspace ---
 WORKDIR="$PWD"
 FW_DIR="$WORKDIR/fw"
 mkdir -p "$FW_DIR"
 
-unzip -qo archive payload.bin -d "$FW_DIR"
+unzip -qo archive payload.bin -d "$FW_DIR" || {
+  echo "Failed to un-zip the firmware archive!"
+  exit 1
+}
 
 cd "$FW_DIR"
 
@@ -134,11 +132,10 @@ sed -i "s/ngentot/\"$os_ver\"/g" info.sh
 
 # --- Create flashable ZIP ---
 ZIP_NAME="FLASHABLE-${dev}-${os_ver}.zip"
-zip -r9 "$WORKDIR/$ZIP_NAME" ./* >/dev/null
+zip -r9 "$WORKDIR/$ZIP_NAME" ./* > /dev/null
 
 cd "$WORKDIR"
 ls -lh "$ZIP_NAME"
 
 echo
 echo "✅ Flashable zip created successfully: $ZIP_NAME"
-
