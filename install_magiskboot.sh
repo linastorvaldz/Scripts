@@ -19,7 +19,7 @@ info() {
 check_deps() {
   local deps=("curl" "7z" "sudo")
   for dep in "${deps[@]}"; do
-    command -v "$dep" >/dev/null 2>&1 || die "Dependency '$dep' not found!"
+    command -v "$dep" > /dev/null 2>&1 || die "Dependency '$dep' not found!"
   done
 }
 
@@ -62,7 +62,7 @@ curl -L -s "$MAGISKBINS_URL" -o magiskbins.7z || die "Failed to download Magisk 
 
 set +e
 info "Extracting archive..."
-7z x -y magiskbins.7z >/dev/null 2>&1
+7z x -y magiskbins.7z > /dev/null 2>&1
 set -e
 
 info "Detecting architecture..."
@@ -70,7 +70,7 @@ case "$(uname -m)" in
   x86_64) arch="x86_64" ;;
   aarch64) arch="arm64-v8a" ;;
   i686) arch="x86" ;;
-  armv7l|armv8l) arch="armeabi-v7a" ;;
+  armv7l | armv8l) arch="armeabi-v7a" ;;
   *) die "Unsupported architecture: $(uname -m)" ;;
 esac
 info "Detected architecture: $arch"
@@ -81,4 +81,3 @@ info "Cleanup temporary files..."
 cleanup
 
 info "✅ Done! magiskboot installed at: $INSTALL_DIR/magiskboot"
-
