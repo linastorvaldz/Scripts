@@ -1,32 +1,39 @@
 #!/bin/bash
+set -euo pipefail
 
 # Default values
 INCLUDE_PRELOADER=true
 URL=""
 
-# Argument handler
-for arg in "$@"; do
-  case $arg in
+# --- Argument handler ---
+while [[ $# -gt 0 ]]; do
+  case $1 in
     --no-preloader)
       INCLUDE_PRELOADER=false
       shift
       ;;
-    --url | -u)
-      if [[ $# -gt 0 ]]; then
+    --url|-u)
+      if [[ -n "${2:-}" ]]; then
         URL="$2"
         shift 2
       else
-        echo "Error: --url requires a URL argument"
+        echo "Error: --url requires a URL argument" >&2
         exit 1
       fi
       ;;
     *)
-      echo "Unknown option: $arg"
+      echo "Unknown option: $1" >&2
       exit 1
       ;;
   esac
 done
 
+if [[ -z "$URL" ]]; then
+  echo "Error: no URL provided. Use --url <link>" >&2
+  exit 1
+fi
+
+# --- Download firmware ---
 aria2c -s16 -x16 -o archive "$URL"
 
 if ! file archive | grep -qi 'zip'; then
@@ -34,88 +41,104 @@ if ! file archive | grep -qi 'zip'; then
   exit 1
 fi
 
-FW_DIR="$PWD/fw"
-mkdir -p $FW_DIR
+# --- Prepare workspace ---
+WORKDIR="$PWD"
+FW_DIR="$WORKDIR/fw"
+mkdir -p "$FW_DIR"
 
-unzip -q archive payload.bin -d $FW_DIR
+unzip -qo archive payload.bin -d "$FW_DIR"
 
-cd $FW_DIR
-if ! [ -f payload.bin ]; then
-  echo "payload.bin does not exist"
-  cd $OLDPWD
+cd "$FW_DIR"
+
+if [[ ! -f payload.bin ]]; then
+  echo "payload.bin not found!"
   exit 1
 fi
-wget -q https://github.com/tobyxdd/android-ota-payload-extractor/releases/download/v1.1/android-ota-extractor-v1.1-linux-amd64.tar.gz
-tar -xf android-ota-extractor-v1.1-linux-amd64.tar.gz
-if ! [ -f android-ota-extractor ]; then
-  echo "android-ota-extractor doesnt exist."
-  cd $OLDPWD
+
+# --- Extract payload.bin ---
+EXTRACTOR_URL="https://github.com/tobyxdd/android-ota-payload-extractor/releases/download/v1.1/android-ota-extractor-v1.1-linux-amd64.tar.gz"
+
+wget -q "$EXTRACTOR_URL" -O extractor.tar.gz
+tar -xf extractor.tar.gz
+rm -f extractor.tar.gz
+
+if [[ ! -f android-ota-extractor ]]; then
+  echo "android-ota-extractor binary missing!"
   exit 1
-else
-  sudo mv android-ota-extractor /usr/bin
-  sudo chmod 0755 /usr/bin/android-ota-extractor
 fi
+
+chmod +x android-ota-extractor
+sudo mv -f android-ota-extractor /usr/local/bin/
 
 android-ota-extractor payload.bin
 rm -f payload.bin
 
+# --- Organize images ---
 KNOWN_DYNAMIC_PARTITION=(
-  system
-  system_ext
-  system_dlkm
-  vendor
-  vendor_dlkm
-  odm_dlkm
-  product
-  mi_ext
+  system system_ext system_dlkm vendor vendor_dlkm
+  odm_dlkm product mi_ext
 )
 
-mkdir -p dynamic
-mkdir -p firmware
+mkdir -p dynamic firmware
 
-for p in ${KNOWN_DYNAMIC_PARTITION[@]}; do
-  mv -f "$p".img dynamic
+for p in "${KNOWN_DYNAMIC_PARTITION[@]}"; do
+  [[ -f "$p.img" ]] && mv -f "$p.img" dynamic/
 done
 
-mv -f *.img firmware
+# Move remaining .img files to firmware/
+shopt -s nullglob
+for img in *.img; do
+  mv -f "$img" firmware/
+done
+shopt -u nullglob
+
+# Optionally remove preloader
 if ! $INCLUDE_PRELOADER; then
   rm -f firmware/preloader*.img
 fi
 
-for p in $(ls dynamic); do
-  echo "${p//.img/} $(wc -c < dynamic/$p) /dev/block/mapper/${p//.img/}"
-done > dynamic.txt
+# --- Generate partition list ---
+{
+  for p in dynamic/*.img; do
+    bn=$(basename "$p" .img)
+    size=$(wc -c < "$p")
+    echo "$bn $size /dev/block/mapper/$bn"
+  done
+} > dynamic.txt
 
 ls firmware > firmware.txt
 
-cd $OLDPWD
+cd "$WORKDIR"
 
-git clone --depth=1 https://github.com/linastorvaldz/jembod jmbd && cd jmbd
-rm -f dynamic-partitions/*
-rm -f firmware-images/*
+# --- Clone and organize target repo ---
+git clone --depth=1 https://github.com/linastorvaldz/jembod jmbd
+cd jmbd
 
-mv $FW_DIR/dynamic.txt ./dynamic_transfer_list.txt
-mv $FW_DIR/firmware.txt ./other_transfer_list.txt
+rm -rf dynamic-partitions/* firmware-images/*
 
-mv $FW_DIR/dynamic/* ./dynamic-partitions
-mv $FW_DIR/firmware/* ./firmware-images
+mv "$FW_DIR/dynamic.txt" ./dynamic_transfer_list.txt
+mv "$FW_DIR/firmware.txt" ./other_transfer_list.txt
+mv "$FW_DIR/dynamic"/* ./dynamic-partitions/
+mv "$FW_DIR/firmware"/* ./firmware-images/
+rm -rf "$FW_DIR"
 
-rm -rf $FW_DIR
-
+# --- Input device info ---
 echo
-echo -n "Device name: "
-read dev
-echo -n "OS Version: "
-read os_ver
+read -rp "Device name: " dev
+read -rp "OS Version: " os_ver
 echo
 
+# --- Update info.sh placeholders ---
 sed -i "s/divais/\"$dev\"/g" info.sh
 sed -i "s/ngentot/\"$os_ver\"/g" info.sh
 
-ZIP_NAME="FLASHABLE-$dev-$os_ver.zip"
+# --- Create flashable ZIP ---
+ZIP_NAME="FLASHABLE-${dev}-${os_ver}.zip"
+zip -r9 "$WORKDIR/$ZIP_NAME" ./* >/dev/null
 
-zip -r9 $OLDPWD/$ZIP_NAME *
+cd "$WORKDIR"
+ls -lh "$ZIP_NAME"
 
-cd $OLDPWD
+echo
+echo "✅ Flashable zip created successfully: $ZIP_NAME"
 
-ls -lh $ZIP_NAME
