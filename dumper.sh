@@ -12,15 +12,15 @@ if ! [ -d "$bin" ]; then
     -O erofs-utils.zip
   unzip -q erofs-utils.zip -d $bin
   rm -f erofs-utils.zip
-  wget -q https://github.com/tobyxdd/android-ota-payload-extractor/releases/download/v1.1/android-ota-extractor-v1.1-linux-amd64.tar.gz
-    -O ota-extractor.zip
-  unzip -q ota-extractor -d $bin
-  rm -f ota-extractor.zip
+  wget -q https://github.com/tobyxdd/android-ota-payload-extractor/releases/download/v1.1/android-ota-extractor-v1.1-linux-amd64.tar.gz \
+    -O ota-extractor.tgz
+  tar -xf ota-extractor.tgz -C $bin
+  rm -f ota-extractor.tgz
   chmod a+x $bin/*
 fi
 
 extract_payload() {
-  ${bin}/android-ota-payload-extractor $@
+  ${bin}/android-ota-extractor $@
   return $?
 }
 
