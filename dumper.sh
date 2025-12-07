@@ -4,16 +4,25 @@
 bin="$PWD/bin"
 if ! [ -d "$bin" ]; then
   mkdir $bin
-  wget https://raw.githubusercontent.com/ramabondanp/DumprX/refs/heads/main/utils/lpunpack \
+  wget -q https://raw.githubusercontent.com/ramabondanp/DumprX/refs/heads/main/utils/lpunpack \
     -O $bin/lpunpack
-  wget https://raw.githubusercontent.com/ramabondanp/DumprX/refs/heads/main/utils/bin/simg2img \
+  wget -q https://raw.githubusercontent.com/ramabondanp/DumprX/refs/heads/main/utils/bin/simg2img \
     -O $bin/simg2img
-  wget https://github.com/sekaiacg/erofs-utils/releases/download/v1.8.10-250719/erofs-utils-v1.8.10-g0e284fcb-Linux_x86_64-2507191652.zip \
+  wget -q https://github.com/sekaiacg/erofs-utils/releases/download/v1.8.10-250719/erofs-utils-v1.8.10-g0e284fcb-Linux_x86_64-2507191652.zip \
     -O erofs-utils.zip
   unzip -q erofs-utils.zip -d $bin
   rm -f erofs-utils.zip
+  wget -q https://github.com/tobyxdd/android-ota-payload-extractor/releases/download/v1.1/android-ota-extractor-v1.1-linux-amd64.tar.gz
+    -O ota-extractor.zip
+  unzip -q ota-extractor -d $bin
+  rm -f ota-extractor.zip
   chmod a+x $bin/*
 fi
+
+extract_payload() {
+  ${bin}/android-ota-payload-extractor $@
+  return $?
+}
 
 extract_erofs() {
   local img
