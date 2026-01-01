@@ -1,79 +1,96 @@
-#!/usr/bin/env bash
+#!/bin/bash
+set -euo pipefail
 
-# setup .gitignore
-echo '.*' > .gitignore
-git add .gitignore
-git commit -sm "Prepare" || true
+ROOT="$(realpath $(dirname "$0"))"
+KSU_PATCHES_DIR="$ROOT/ksu-patches"
 
-# cleanup (kecuali .git, kernel, LICENSE, .gitignore)
-shopt -s dotglob
-for f in *; do
-  case "$f" in
-    .git | kernel | LICENSE | .gitignore) ;;
-    *) rm -rf "$f" ;;
-  esac
-done
-shopt -u dotglob
-git add -A
-git commit -sm "Cleanup." || true
+die() {
+  echo "error: $*" >&2
+  exit 1
+}
 
-# change repo link
-target_repo="fastbooteraseboot/KernelSU-Next"
-sed -i "s|KernelSU-Next/KernelSU-Next|$target_repo|g" kernel/setup.sh
-git add kernel/setup.sh
-git commit -sm "setup.sh: switch to our fork"
+add_gitignore() {
+  local f
+  for f in '*.patch' '*.rej' '*.orig' '.kp' '.susfs'; do
+    grep -qxF "$f" .gitignore 2>/dev/null || echo "$f" >> .gitignore
+  done
+}
 
-# functions
-check() {
-  local dir="$1"
-  local repo="$2"
-  local branch="$3"
+cleanup_tree() {
+  shopt -s dotglob
+  for f in *; do
+    case "$f" in
+      .git|kernel|LICENSE|.gitignore) ;;
+      *) rm -rf -- "$f" ;;
+    esac
+  done
+  shopt -u dotglob
+}
+
+check_dep() {
+  local dir="$1" repo="$2" branch="$3"
 
   if [ -d "$dir/.git" ]; then
     echo "📥 Updating $dir..."
-    git -C "$dir" pull --ff-only || true
+    git -C "$dir" pull
   else
-    echo "📥 Cloning $repo ($branch) into $dir..."
+    echo "📥 Cloning $repo ($branch)"
     git clone --depth=1 -b "$branch" "$repo" "$dir"
   fi
 }
 
-abort() {
-  echo "❌ error: $*" >&2
-  exit 1
-}
+### setup ###
+add_gitignore
+cleanup_tree
 
-_patch() {
-  local patch_file="$1"
-  patch -p1 --no-backup-if-mismatch < "$patch_file"
+git add .
+git commit -sm "Cleanup"
 
-  # cleanup .orig / .rej
-  find . -type f \( -name '*.orig' -o -name '*.rej' \) -delete
-}
-
-# clone repos
-check ".susfs" "https://gitlab.com/simonpunk/susfs4ksu" "gki-android15-6.6"
-check ".kp" "https://github.com/WildKernels/kernel_patches" "main"
+### deps ###
+check_dep ".susfs" "https://gitlab.com/simonpunk/susfs4ksu" "gki-android12-5.10"
+check_dep ".kp" "https://github.com/WildKernels/kernel_patches" "main"
 
 sus_dir="$PWD/.susfs"
-sus_ver=$(grep -E '^#define SUSFS_VERSION' \
-  "$sus_dir/kernel_patches/include/linux/susfs.h" \
-  | cut -d' ' -f3 | tr -d '"')
+sus_ver="$(
+  sed -n 's/^#define[[:space:]]\+SUSFS_VERSION[[:space:]]\+"\([^"]\+\)"/\1/p' \
+  "$sus_dir/kernel_patches/include/linux/susfs.h"
+)"
+
+[ -n "$sus_ver" ] || die "Failed to detect SUSFS_VERSION"
 
 kp="$PWD/.kp/next/susfs_fix_patches/$sus_ver"
-sus_patch="${sus_dir}/kernel_patches/KernelSU/10_enable_susfs_for_ksu.patch"
+sus_patch="$sus_dir/kernel_patches/KernelSU/10_enable_susfs_for_ksu.patch"
 
-[ -d "kernel" ] || abort "kernel directory not found."
-[ -d "$kp" ] || abort "susfs fix patches directory not found"
+[ -d kernel ] || die "kernel directory not found"
+[ -d "$kp" ] || die "susfs fix patches are not available for ${sus_ver}!"
 
-# start patching
-_patch "$sus_patch"
+### apply base patch ###
+patch -p1 < "$sus_patch"
 
-for p in "$kp"/*.patch; do
-  _patch "$p"
+### apply fix patches ###
+while IFS= read -r rej; do
+  base="$(basename "$rej" .rej)"
+  fix="$kp/fix_${base}.patch"
+
+  [ -f "$fix" ] || die "Missing fix patch: $fix"
+  patch -p1 < "$fix"
+  echo "✔ fixed $base"
+done < <(find kernel -name '*.rej')
+
+### apply KSU patches ###
+for p in "$KSU_PATCHES_DIR"/*.patch; do
+  echo "📌 Applying $(basename "$p")"
+  if ! git am "$p"; then
+    if ! patch -p1 < "$p"; then
+      die "Failed to apply $(basename "$p"), please fix it manually."
+    fi
+    git add .
+    git am --continue
+  fi
 done
 
-git add -A
-git commit -sm "Add SUSFS $sus_ver" || true
+### cleanup ###
+find . -type f \( -name '*.rej' -o -name '*.orig' \) -delete
 
-echo "🎉 Done! SUSFS $sus_ver applied successfully."
+git add .
+git commit -sm "Apply kernelsu-side susfs ${sus_ver} patches"
