@@ -1,41 +1,40 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# ============================
-# Config (bisa juga via argumen)
-# ============================
-BRANCH_NAME="${1:-$(git rev-parse --abbrev-ref HEAD)}" # arg1 atau current branch
-REMOTE_NAME="${2:-origin}"                             # arg2 atau origin
-STEP_SIZE="${3:-200000}"                               # arg3 atau default 1000
+BRANCH_NAME="${1:-$(git rev-parse --abbrev-ref HEAD)}"
+REMOTE_NAME="${2:-origin}"
+STEP_SIZE="${3:-1000}"
 
-# ============================
-# Step 1: Ambil setiap nth commit
-# ============================
 echo "[INFO] Mengambil daftar commit dari branch '$BRANCH_NAME'..."
-step_commits=$(git log --oneline --reverse "refs/heads/$BRANCH_NAME" \
+
+# Cek commit terakhir yang sudah ada di remote (untuk resume)
+REMOTE_HEAD=$(git ls-remote "$REMOTE_NAME" "refs/heads/$BRANCH_NAME" | awk '{print $1}')
+
+if [[ -n "$REMOTE_HEAD" ]]; then
+  echo "[INFO] Remote sudah ada di $REMOTE_HEAD, hanya push sisanya..."
+  RANGE="$REMOTE_HEAD..refs/heads/$BRANCH_NAME"
+else
+  RANGE="refs/heads/$BRANCH_NAME"
+fi
+
+# Ambil commit dengan step, pakai --first-parent agar linear
+step_commits=$(git log --oneline --reverse --first-parent "$RANGE" \
   | awk "NR % $STEP_SIZE == 0" | awk '{print $1}')
 
 if [[ -z "$step_commits" ]]; then
-  echo "[ERROR] Tidak ada commit yang cocok. Coba turunkan STEP_SIZE."
-  exit 1
+  echo "[INFO] Tidak ada commit baru, langsung final push..."
+else
+  for commit in $step_commits; do
+    echo "  → Push s/d commit $commit"
+    git push "$REMOTE_NAME" "+$commit:refs/heads/$BRANCH_NAME" || {
+      echo "[ERROR] Gagal di commit $commit"
+      exit 1
+    }
+  done
 fi
 
-# ============================
-# Step 2: Push commit bertahap
-# ============================
-echo "[INFO] Memulai incremental push ke '$REMOTE_NAME/$BRANCH_NAME' dengan step $STEP_SIZE commit..."
-for commit in $step_commits; do
-  echo "  → Push commit $commit"
-  if ! git push "$REMOTE_NAME" "+$commit:refs/heads/$BRANCH_NAME"; then
-    echo "[ERROR] Gagal push commit $commit. Keluar."
-    exit 1
-  fi
-done
-
-# ============================
-# Step 3: Final sync
-# ============================
-echo "[INFO] Final sync semua ref..."
-git push "$REMOTE_NAME" --mirror
+# Final push — hanya branch ini, BUKAN --mirror
+echo "[INFO] Final push branch '$BRANCH_NAME'..."
+git push "$REMOTE_NAME" "refs/heads/$BRANCH_NAME"
 
 echo "[OK] Incremental push selesai ✅"
